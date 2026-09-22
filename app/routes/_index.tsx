@@ -1,3 +1,4 @@
+import { signOut } from "@agent-native/core/client";
 import {
   IconActivity,
   IconArrowDownRight,
@@ -17,6 +18,7 @@ import {
   IconFileAnalytics,
   IconFilter,
   IconLayoutDashboard,
+  IconLogout,
   IconMenu2,
   IconMessage,
   IconPlus,
@@ -188,7 +190,7 @@ const chartPoints =
 
 export function meta() {
   return [
-    { title: "HRIMS · Human Resource Information System" },
+    { title: APP_TITLE },
     {
       name: "description",
       content: "A focused HR operations dashboard for modern teams.",
@@ -310,6 +312,14 @@ export default function HomeRoute() {
             >
               <IconMessage size={18} />
               <span className="notification-dot" />
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Sign out"
+              title="Sign out"
+              onClick={() => void signOut()}
+            >
+              <IconLogout size={18} />
             </button>
             <div className="profile-menu">
               <div className="avatar avatar-spencer">S</div>
