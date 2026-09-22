@@ -38,14 +38,14 @@ visual direction — read and preserve them on every subsequent build; do not
 re-derive a new direction. The first UI pass must fill these fields in as
 part of that build, not leave them as an empty template.
 
-- Product mode: `operate` | `read` | `persuade` | `experience`
-- Audience and cadence:
-- Visual world (name + the feeling it creates):
-- Palette family + neutral undertone:
-- Type treatment:
-- Composition:
-- Shape language:
-- Anti-references (defaults this app must not drift toward):
+- Product mode: `operate`
+- Audience and cadence: HR leaders and operations administrators returning throughout the workday
+- Visual world (name + the feeling it creates): Clearwater operations desk — calm, precise, and quietly capable
+- Palette family + neutral undertone: Cobalt / sky with a cool white and blue-gray neutral base
+- Type treatment: Sans-first with compact numeric emphasis and restrained uppercase metadata
+- Composition: Focused workbench with a left rail, metric strip, trend panels, and operational lists
+- Shape language: Soft utility surfaces, crisp 1px borders, restrained 12px corners, and quiet shadows
+- Anti-references (defaults this app must not drift toward): Purple gradients, glassmorphism, oversized hero copy, decorative illustrations, and equal-weight card grids
 
 ## Agent-native is structural, not visual
 
@@ -60,7 +60,7 @@ Surface And Page Boundaries so the surfaces are wired correctly.
 ## Guardrails
 
 - Keep semantic token names and shared component seams intact; express the
-  direction through token *values*, type, spacing, and composition — not by
+  direction through token _values_, type, spacing, and composition — not by
   forking the design system.
 - Density comes from data, not prose. Subtract explanatory chrome; never
   subtract the visual craft that makes the app impressive.
