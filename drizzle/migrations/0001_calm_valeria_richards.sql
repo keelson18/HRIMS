@@ -1,0 +1,2 @@
+ALTER TABLE "employees" ADD CONSTRAINT "employees_employee_code_unique" UNIQUE("employee_code");--> statement-breakpoint
+ALTER TABLE "employees" ADD CONSTRAINT "employees_email_unique" UNIQUE("email");

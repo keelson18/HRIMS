@@ -1,5 +1,10 @@
 import { signOut } from "@agent-native/core/client";
 import {
+  actionErrorMessage,
+  useActionMutation,
+  useActionQuery,
+} from "@agent-native/core/client/hooks";
+import {
   IconActivity,
   IconArrowDownRight,
   IconArrowUpRight,
@@ -18,18 +23,21 @@ import {
   IconFileAnalytics,
   IconFilter,
   IconLayoutDashboard,
+  IconLoader2,
   IconLogout,
+  IconPencil,
   IconMenu2,
   IconMessage,
   IconPlus,
   IconSearch,
   IconSettings,
   IconShieldCheck,
+  IconTrash,
   IconUserPlus,
   IconUsers,
   IconX,
 } from "@tabler/icons-react";
-import { useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { APP_TITLE } from "@/lib/app-config";
 
@@ -94,96 +102,17 @@ const activities = [
 ];
 
 type Employee = {
-  name: string;
-  initials: string;
   id: string;
-  role: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  email: string;
   department: string;
+  role: string;
   status: string;
-  type: string;
-  joined: string;
-  color: string;
+  workType: string;
+  joinedDate: string;
 };
-
-const employees: Employee[] = [
-  {
-    name: "Emma Johnson",
-    initials: "EJ",
-    id: "EMP-1001",
-    role: "Software Engineer",
-    department: "Engineering",
-    status: "Active",
-    type: "Hybrid",
-    joined: "May 24, 2023",
-    color: "sky",
-  },
-  {
-    name: "Liam Smith",
-    initials: "LS",
-    id: "EMP-1002",
-    role: "Sales Manager",
-    department: "Sales",
-    status: "Active",
-    type: "Remote",
-    joined: "Jun 12, 2022",
-    color: "violet",
-  },
-  {
-    name: "Olivia Brown",
-    initials: "OB",
-    id: "EMP-1003",
-    role: "HR Specialist",
-    department: "Human Resources",
-    status: "On Leave",
-    type: "Hybrid",
-    joined: "Aug 01, 2023",
-    color: "mint",
-  },
-  {
-    name: "Noah Williams",
-    initials: "NW",
-    id: "EMP-1004",
-    role: "Financial Analyst",
-    department: "Finance",
-    status: "Active",
-    type: "On-site",
-    joined: "Jan 18, 2023",
-    color: "amber",
-  },
-  {
-    name: "Ava Davis",
-    initials: "AD",
-    id: "EMP-1005",
-    role: "Marketing Specialist",
-    department: "Marketing",
-    status: "Active",
-    type: "Remote",
-    joined: "Mar 03, 2023",
-    color: "rose",
-  },
-  {
-    name: "Mason Lee",
-    initials: "ML",
-    id: "EMP-1006",
-    role: "DevOps Engineer",
-    department: "Engineering",
-    status: "Probation",
-    type: "Hybrid",
-    joined: "Apr 15, 2024",
-    color: "blue",
-  },
-  {
-    name: "Sophia Garcia",
-    initials: "SG",
-    id: "EMP-1007",
-    role: "Operations Manager",
-    department: "Operations",
-    status: "Active",
-    type: "On-site",
-    joined: "Feb 20, 2022",
-    color: "teal",
-  },
-];
 
 const chartPoints =
   "0,88 24,79 48,82 72,67 96,70 120,58 144,62 168,47 192,50 216,38 240,43 264,28 288,33";
@@ -204,11 +133,6 @@ export default function HomeRoute() {
   const [search, setSearch] = useState("");
 
   const isEmployees = activeView === "Employees";
-  const filteredEmployees = employees.filter((employee) =>
-    `${employee.name} ${employee.role} ${employee.department}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  );
 
   return (
     <div className="hrims-app">
@@ -336,12 +260,7 @@ export default function HomeRoute() {
           {activeView === "Dashboard" && (
             <DashboardView onViewEmployees={() => setActiveView("Employees")} />
           )}
-          {isEmployees && (
-            <EmployeesView
-              employees={filteredEmployees}
-              onAddEmployee={() => setActiveView("Employees")}
-            />
-          )}
+          {isEmployees && <EmployeesView query={search} />}
           {!isEmployees && activeView !== "Dashboard" && (
             <PlaceholderView
               label={activeView}
@@ -718,177 +637,570 @@ function DashboardView({ onViewEmployees }: { onViewEmployees: () => void }) {
   );
 }
 
-function EmployeesView({
-  employees,
-  onAddEmployee,
-}: {
-  employees: Employee[];
-  onAddEmployee: () => void;
-}) {
+type EmployeeFormData = {
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  department: string;
+  role: string;
+  status: "active" | "on_leave" | "probation";
+  workType: "hybrid" | "remote" | "on-site";
+  joinedDate: string;
+};
+
+const emptyEmployeeForm: EmployeeFormData = {
+  employeeCode: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  department: "",
+  role: "",
+  status: "active",
+  workType: "hybrid",
+  joinedDate: "",
+};
+
+function EmployeesView({ query }: { query: string }) {
+  const [status, setStatus] = useState<
+    "all" | "active" | "on_leave" | "probation"
+  >("all");
+  const [page, setPage] = useState(1);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [form, setForm] = useState<EmployeeFormData>(emptyEmployeeForm);
+  const pageSize = 10;
+  const employeeQuery = useActionQuery("list-employees", {
+    query,
+    status,
+    page,
+    pageSize,
+  });
+  const createEmployee = useActionMutation("create-employee");
+  const updateEmployee = useActionMutation("update-employee");
+  const deleteEmployee = useActionMutation("delete-employee");
+  const rows = (employeeQuery.data?.rows ?? []) as Employee[];
+  const total = employeeQuery.data?.total ?? 0;
+  const pageCount = employeeQuery.data?.pageCount ?? 1;
+  const mutationError =
+    createEmployee.error ?? updateEmployee.error ?? deleteEmployee.error;
+  const isMutating =
+    createEmployee.isPending ||
+    updateEmployee.isPending ||
+    deleteEmployee.isPending;
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, status]);
+
+  function openCreateForm() {
+    setEditingEmployee(null);
+    setForm(emptyEmployeeForm);
+    setFormOpen(true);
+  }
+
+  function openEditForm(employee: Employee) {
+    setEditingEmployee(employee);
+    setForm({
+      employeeCode: employee.employeeCode,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      department: employee.department,
+      role: employee.role,
+      status: employee.status as EmployeeFormData["status"],
+      workType: employee.workType as EmployeeFormData["workType"],
+      joinedDate: employee.joinedDate,
+    });
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    if (isMutating) return;
+    setFormOpen(false);
+    setEditingEmployee(null);
+  }
+
+  function submitForm(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (editingEmployee) {
+      updateEmployee.mutate(
+        { id: editingEmployee.id, ...form },
+        { onSuccess: closeForm },
+      );
+      return;
+    }
+    createEmployee.mutate(form, { onSuccess: closeForm });
+  }
+
+  function confirmDelete(id: string) {
+    deleteEmployee.mutate(
+      { id },
+      { onSuccess: () => setPendingDeleteId(null) },
+    );
+  }
+
   return (
     <>
       <PageHeading
         eyebrow="People operations"
         title="Employees"
         action={
-          <button className="primary-button" onClick={onAddEmployee}>
+          <button className="primary-button" onClick={openCreateForm}>
             <IconPlus size={16} /> Add employee
           </button>
         }
       />
-      <section className="metrics-grid">
+      <section className="metrics-grid" aria-label="Employee totals">
         <MetricCard
           icon={IconUsers}
-          label="Total Employees"
-          value="1,248"
-          change="5.2%"
+          label="Employees in view"
+          value={String(total)}
+          change=""
           tone="sky"
         />
         <MetricCard
           icon={IconUserPlus}
-          label="Active"
-          value="1,182"
-          change="3.7%"
+          label="Current page"
+          value={`${rows.length} / ${pageSize}`}
+          change=""
           tone="mint"
         />
         <MetricCard
           icon={IconCalendarEvent}
-          label="On Leave"
-          value="38"
-          change="-1.0%"
+          label="Page"
+          value={`${page} / ${pageCount}`}
+          change=""
           tone="amber"
           inverse
         />
         <MetricCard
-          icon={IconUserPlus}
-          label="New Hires"
-          value="28"
-          change="22.3%"
+          icon={IconActivity}
+          label="Data source"
+          value="Live"
+          change=""
           tone="violet"
         />
       </section>
+      {formOpen && (
+        <EmployeeForm
+          editing={Boolean(editingEmployee)}
+          value={form}
+          pending={isMutating}
+          error={mutationError}
+          onChange={setForm}
+          onSubmit={submitForm}
+          onCancel={closeForm}
+        />
+      )}
       <section className="employees-layout">
         <div className="panel employee-list-panel">
           <div className="list-toolbar">
-            <div className="segmented">
-              <button className="selected">
-                All Employees <span>1,248</span>
+            <div
+              className="segmented"
+              role="tablist"
+              aria-label="Employee status"
+            >
+              <button
+                className={status === "all" ? "selected" : ""}
+                onClick={() => setStatus("all")}
+                role="tab"
+                aria-selected={status === "all"}
+              >
+                All Employees <span>{total}</span>
               </button>
-              <button>Active</button>
-              <button>On Leave</button>
-              <button>Remote</button>
+              <button
+                className={status === "active" ? "selected" : ""}
+                onClick={() => setStatus("active")}
+                role="tab"
+                aria-selected={status === "active"}
+              >
+                Active
+              </button>
+              <button
+                className={status === "on_leave" ? "selected" : ""}
+                onClick={() => setStatus("on_leave")}
+                role="tab"
+                aria-selected={status === "on_leave"}
+              >
+                On Leave
+              </button>
+              <button
+                className={status === "probation" ? "selected" : ""}
+                onClick={() => setStatus("probation")}
+                role="tab"
+                aria-selected={status === "probation"}
+              >
+                Probation
+              </button>
             </div>
             <div className="toolbar-actions">
-              <button className="filter-button">
-                <IconFilter size={15} /> All Departments{" "}
-                <IconChevronDown size={13} />
-              </button>
-              <button className="filter-button hide-small">
-                All Roles <IconChevronDown size={13} />
-              </button>
-              <button className="icon-button">
+              <span className="live-query-label">
+                <IconFilter size={13} /> Server filtered
+              </span>
+              <button
+                className="icon-button"
+                aria-label="Refresh employees"
+                onClick={() => void employeeQuery.refetch()}
+              >
                 <IconDownload size={16} />
               </button>
             </div>
           </div>
-          <div className="employee-table">
-            <div className="employee-table-row employee-table-header">
-              <span>Employee</span>
-              <span>Employee ID</span>
-              <span>Department</span>
-              <span>Role</span>
-              <span>Status</span>
-              <span>Work Type</span>
-              <span>Joining Date</span>
-              <span>Actions</span>
+          {employeeQuery.isLoading ? (
+            <div className="table-state" role="status">
+              <IconLoader2 className="spin" size={20} />
+              <span>Loading employees</span>
             </div>
-            {employees.map((employee) => (
-              <div className="employee-table-row" key={employee.id}>
-                <div className="employee-cell">
-                  <div className={`avatar avatar-${employee.color}`}>
-                    {employee.initials}
-                  </div>
-                  <strong>{employee.name}</strong>
-                </div>
-                <span className="muted-text">{employee.id}</span>
-                <span className="dept-text">{employee.department}</span>
-                <span>{employee.role}</span>
-                <span>
-                  <b
-                    className={`status-pill status-${employee.status.toLowerCase().replace(" ", "-")}`}
-                  >
-                    {employee.status}
-                  </b>
-                </span>
-                <span>
-                  <b
-                    className={`type-pill type-${employee.type.toLowerCase().replace("-", "")}`}
-                  >
-                    {employee.type}
-                  </b>
-                </span>
-                <span>{employee.joined}</span>
-                <span className="row-actions">
-                  <button aria-label={`View ${employee.name}`}>
-                    <IconSearch size={14} />
-                  </button>
-                  <button aria-label={`Edit ${employee.name}`}>
-                    <IconDots size={15} />
-                  </button>
-                </span>
+          ) : employeeQuery.error ? (
+            <div className="table-state table-error" role="alert">
+              <strong>Employees could not be loaded.</strong>
+              <span>
+                {readableActionError(
+                  employeeQuery.error,
+                  "Try again in a moment.",
+                )}
+              </span>
+              <button
+                className="secondary-button"
+                onClick={() => void employeeQuery.refetch()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="table-state">
+              <IconUsers size={24} />
+              <strong>No employees match this view.</strong>
+              <span>Adjust the search or add the first employee.</span>
+              <button className="secondary-button" onClick={openCreateForm}>
+                Add employee
+              </button>
+            </div>
+          ) : (
+            <div className="employee-table">
+              <div className="employee-table-row employee-table-header">
+                <span>Employee</span>
+                <span>Employee ID</span>
+                <span>Department</span>
+                <span>Role</span>
+                <span>Status</span>
+                <span>Work Type</span>
+                <span>Joining Date</span>
+                <span>Actions</span>
               </div>
-            ))}
-          </div>
-          <div className="list-footer">
-            <span>Showing 1 to {employees.length} of 1,248 employees</span>
-            <div className="pagination">
-              <button>‹</button>
-              <button className="current">1</button>
-              <button>2</button>
-              <button>3</button>
-              <span>...</span>
-              <button>125</button>
-              <button>›</button>
+              {rows.map((employee) => {
+                const name = `${employee.firstName} ${employee.lastName}`;
+                return (
+                  <div className="employee-table-row" key={employee.id}>
+                    <div className="employee-cell">
+                      <div className={`avatar avatar-${avatarTone(name)}`}>
+                        {initials(name)}
+                      </div>
+                      <div>
+                        <strong>{name}</strong>
+                        <small className="employee-email">
+                          {employee.email}
+                        </small>
+                      </div>
+                    </div>
+                    <span className="muted-text">{employee.employeeCode}</span>
+                    <span className="dept-text">{employee.department}</span>
+                    <span>{employee.role}</span>
+                    <span>
+                      <b
+                        className={`status-pill status-${employee.status.replace("_", "-")}`}
+                      >
+                        {employee.status.replace("_", " ")}
+                      </b>
+                    </span>
+                    <span>
+                      <b
+                        className={`type-pill type-${employee.workType.replace("-", "")}`}
+                      >
+                        {employee.workType}
+                      </b>
+                    </span>
+                    <span>{formatJoinedDate(employee.joinedDate)}</span>
+                    <span className="row-actions">
+                      <button
+                        aria-label={`Edit ${name}`}
+                        onClick={() => openEditForm(employee)}
+                      >
+                        <IconPencil size={14} />
+                      </button>
+                      <button
+                        aria-label={`Delete ${name}`}
+                        onClick={() => setPendingDeleteId(employee.id)}
+                      >
+                        <IconTrash size={14} />
+                      </button>
+                    </span>
+                    {pendingDeleteId === employee.id && (
+                      <div className="delete-confirm" role="alert">
+                        <span>Delete {name}?</span>
+                        <button
+                          onClick={() => confirmDelete(employee.id)}
+                          disabled={isMutating}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => setPendingDeleteId(null)}
+                          disabled={isMutating}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <span className="per-page">
-              10 / page <IconChevronDown size={12} />
+          )}
+          <div className="list-footer">
+            <span>
+              Showing {rows.length ? (page - 1) * pageSize + 1 : 0} to{" "}
+              {Math.min(page * pageSize, total)} of {total} employees
             </span>
+            <div className="pagination">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                ‹
+              </button>
+              <span>
+                Page {page} of {pageCount}
+              </span>
+              <button
+                disabled={page >= pageCount}
+                onClick={() =>
+                  setPage((current) => Math.min(pageCount, current + 1))
+                }
+              >
+                ›
+              </button>
+            </div>
+            <span className="per-page">{pageSize} / page</span>
           </div>
         </div>
         <div className="panel distribution-panel">
-          <PanelHeader title="Department Distribution" />
-          <div className="donut-chart">
-            <div className="donut-center">
-              <strong>1,248</strong>
-              <span>Total</span>
-            </div>
+          <PanelHeader title="Employee data" />
+          <div className="data-health">
+            <IconCircleCheck size={24} />
+            <strong>Live database</strong>
+            <span>Records are scoped to the signed-in workspace.</span>
           </div>
           <div className="distribution-list">
             <span>
               <i className="dot dot-blue" />
-              Engineering <b>29%</b>
-            </span>
-            <span>
-              <i className="dot dot-purple" />
-              HR <b>16%</b>
+              Search <b>{query ? "Active" : "Ready"}</b>
             </span>
             <span>
               <i className="dot dot-mint" />
-              Sales <b>20%</b>
+              Filter <b>{status.replace("_", " ")}</b>
             </span>
             <span>
-              <i className="dot dot-amber" />
-              Finance <b>15%</b>
-            </span>
-            <span>
-              <i className="dot dot-cyan" />
-              Operations <b>18%</b>
+              <i className="dot dot-purple" />
+              Pagination <b>{pageSize} rows</b>
             </span>
           </div>
         </div>
       </section>
     </>
   );
+}
+
+function EmployeeForm({
+  editing,
+  value,
+  pending,
+  error,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  editing: boolean;
+  value: EmployeeFormData;
+  pending: boolean;
+  error: unknown;
+  onChange: (value: EmployeeFormData) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+}) {
+  function updateField<K extends keyof EmployeeFormData>(
+    field: K,
+    fieldValue: EmployeeFormData[K],
+  ) {
+    onChange({ ...value, [field]: fieldValue });
+  }
+  return (
+    <section
+      className="panel employee-form-panel"
+      aria-labelledby="employee-form-title"
+    >
+      <div className="panel-header">
+        <h2 id="employee-form-title">
+          {editing ? "Edit employee" : "Add employee"}
+        </h2>
+        <button
+          className="icon-button"
+          onClick={onCancel}
+          aria-label="Close form"
+        >
+          <IconX size={16} />
+        </button>
+      </div>
+      <form className="employee-form" onSubmit={onSubmit}>
+        <label>
+          Employee ID
+          <input
+            required
+            maxLength={32}
+            value={value.employeeCode}
+            onChange={(event) =>
+              updateField("employeeCode", event.target.value)
+            }
+          />
+        </label>
+        <label>
+          First name
+          <input
+            required
+            maxLength={80}
+            value={value.firstName}
+            onChange={(event) => updateField("firstName", event.target.value)}
+          />
+        </label>
+        <label>
+          Last name
+          <input
+            required
+            maxLength={80}
+            value={value.lastName}
+            onChange={(event) => updateField("lastName", event.target.value)}
+          />
+        </label>
+        <label>
+          Work email
+          <input
+            required
+            type="email"
+            maxLength={254}
+            value={value.email}
+            onChange={(event) => updateField("email", event.target.value)}
+          />
+        </label>
+        <label>
+          Department
+          <input
+            required
+            maxLength={100}
+            value={value.department}
+            onChange={(event) => updateField("department", event.target.value)}
+          />
+        </label>
+        <label>
+          Role
+          <input
+            required
+            maxLength={120}
+            value={value.role}
+            onChange={(event) => updateField("role", event.target.value)}
+          />
+        </label>
+        <label>
+          Status
+          <select
+            value={value.status}
+            onChange={(event) =>
+              updateField(
+                "status",
+                event.target.value as EmployeeFormData["status"],
+              )
+            }
+          >
+            <option value="active">Active</option>
+            <option value="on_leave">On leave</option>
+            <option value="probation">Probation</option>
+          </select>
+        </label>
+        <label>
+          Work type
+          <select
+            value={value.workType}
+            onChange={(event) =>
+              updateField(
+                "workType",
+                event.target.value as EmployeeFormData["workType"],
+              )
+            }
+          >
+            <option value="hybrid">Hybrid</option>
+            <option value="remote">Remote</option>
+            <option value="on-site">On-site</option>
+          </select>
+        </label>
+        <label>
+          Joining date
+          <input
+            required
+            type="date"
+            value={value.joinedDate}
+            onChange={(event) => updateField("joinedDate", event.target.value)}
+          />
+        </label>
+        <div className="employee-form-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onCancel}
+            disabled={pending}
+          >
+            Cancel
+          </button>
+          <button className="primary-button" type="submit" disabled={pending}>
+            {pending && <IconLoader2 className="spin" size={14} />}
+            {editing ? "Save changes" : "Add employee"}
+          </button>
+        </div>
+        {error ? (
+          <p className="form-error" role="alert">
+            {readableActionError(error, "The employee could not be saved.")}
+          </p>
+        ) : null}
+      </form>
+    </section>
+  );
+}
+
+function readableActionError(error: unknown, fallback: string): string {
+  const message: unknown = actionErrorMessage(error);
+  return typeof message === "string" ? message : fallback;
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function avatarTone(name: string) {
+  const tones = ["sky", "violet", "mint", "amber", "rose", "blue", "teal"];
+  return tones[name.length % tones.length];
+}
+
+function formatJoinedDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00`));
 }
 
 function PlaceholderView({

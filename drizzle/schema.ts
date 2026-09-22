@@ -1,18 +1,17 @@
-// App tables live here. Define each table with the framework's portable column
-// helpers so the same schema works on local libSQL and hosted Postgres.
-//
-// After editing this file, run `pnpm db:generate` and restart the dev server
-// (see `drizzle/START_HERE.md`). Example table — uncomment and adapt:
-//
-// import { integer, now, table, text } from "@agent-native/core/db/schema";
-//
-// export const notes = table("notes", {
-//   id: text("id").primaryKey(),
-//   title: text("title").notNull(),
-//   body: text("body").notNull().default(""),
-//   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
-//   createdAt: text("created_at").notNull().default(now()),
-//   updatedAt: text("updated_at").notNull().default(now()),
-// });
+import { now, table, text } from "@agent-native/core/db/schema";
 
-export {};
+export const employees = table("employees", {
+  id: text("id").primaryKey(),
+  ownerEmail: text("owner_email").notNull(),
+  employeeCode: text("employee_code").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email").notNull().unique(),
+  department: text("department").notNull(),
+  role: text("role").notNull(),
+  status: text("status").notNull().default("active"),
+  workType: text("work_type").notNull().default("hybrid"),
+  joinedDate: text("joined_date").notNull(),
+  createdAt: text("created_at").notNull().default(now()),
+  updatedAt: text("updated_at").notNull().default(now()),
+});
